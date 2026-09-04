@@ -1,0 +1,25 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add a shade motor",
+        "description": "Enter the BLE MAC address of the shade motor.",
+        "data": {
+          "address": "Bluetooth address"
+        }
+      },
+      "key": {
+        "title": "Motor key",
+        "description": "Enter the BLE key for {address}. Find it with `smartblinds-find-key` or by sniffing the app once.",
+        "data": {
+          "key": "Key (hex, e.g. 2a)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This shade is already configured.",
+      "no_devices_found": "No shade motors found."
+    }
+  }
+}

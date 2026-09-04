@@ -1,0 +1,20 @@
+{
+  "domain": "smartblinds_ble",
+  "name": "SmartBlinds BLE",
+  "bluetooth": [
+    {
+      "local_name": "SmartBlind_DFU",
+      "connectable": true
+    }
+  ],
+  "codeowners": ["@benbalter"],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/benbalter/ha-smartblinds-ble",
+  "integration_type": "device",
+  "iot_class": "assumed_state",
+  "issue_tracker": "https://github.com/benbalter/ha-smartblinds-ble/issues",
+  "loggers": ["smartblinds_ble"],
+  "requirements": ["smartblinds-ble==0.0.1"],
+  "version": "0.0.1"
+}
