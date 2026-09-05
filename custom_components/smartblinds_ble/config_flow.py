@@ -1,32 +1,38 @@
-"""Config flow for SmartBlinds BLE.
+"""Config flow for SmartBlinds BLE (Tilt roller shades).
 
-Supports Bluetooth auto-discovery (including via ESPHome proxies) and a manual
-step. Both collect the per-motor BLE key, which is the main setup hurdle — a user
-gets it from `smartblinds-find-key` or by sniffing the app once.
-
-⚠️  STUB: the key-validation step below does not yet talk to hardware. Once
-    Milestone 0 confirms the protocol, wire it to smartblinds_ble.SmartBlind so a
-    bad key is rejected at setup instead of silently failing later.
+Supports Bluetooth auto-discovery (including via ESPHome proxies) and manual
+entry. Both collect the shade's 64-hex pairing key, which is validated live by
+authenticating a read-only session before the entry is created, so a wrong or
+stale key is rejected at setup instead of failing silently later.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import voluptuous as vol
+from bleak import BleakClient
+from bleak.exc import BleakError
+from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 
+from smartblinds_ble.tilt import AuthenticationError, TiltProtocolError, TiltShadeClient
+
 from .const import CONF_ADDRESS, CONF_KEY, DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for SmartBlinds BLE."""
+    """Handle a config flow for a single Tilt roller shade."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        self._discovered_address: str | None = None
+        self._address: str | None = None
+        self._name: str | None = None
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
@@ -34,20 +40,21 @@ class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle a shade discovered over Bluetooth."""
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
-        self._discovered_address = discovery_info.address
-        self.context["title_placeholders"] = {"name": discovery_info.address}
+        self._address = discovery_info.address
+        self._name = discovery_info.name or discovery_info.address
+        self.context["title_placeholders"] = {"name": self._name}
         return await self.async_step_key()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle manual setup: enter the motor's BLE address."""
+        """Handle manual setup: enter the shade's BLE address."""
         if user_input is not None:
-            await self.async_set_unique_id(
-                user_input[CONF_ADDRESS].upper(), raise_on_progress=False
-            )
+            address = user_input[CONF_ADDRESS].upper()
+            await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
-            self._discovered_address = user_input[CONF_ADDRESS].upper()
+            self._address = address
+            self._name = address
             return await self.async_step_key()
 
         return self.async_show_form(
@@ -58,20 +65,48 @@ class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_key(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Collect the per-motor BLE key (hex, e.g. '2a')."""
-        assert self._discovered_address is not None
+        """Collect and validate the 64-hex pairing key."""
+        assert self._address is not None
+        errors: dict[str, str] = {}
         if user_input is not None:
-            # TODO(M0): validate the key against the motor before creating the entry.
-            return self.async_create_entry(
-                title=f"SmartBlind {self._discovered_address}",
-                data={
-                    CONF_ADDRESS: self._discovered_address,
-                    CONF_KEY: user_input[CONF_KEY],
-                },
-            )
+            error = await self._validate_key(user_input[CONF_KEY])
+            if error is None:
+                return self.async_create_entry(
+                    title=self._name or self._address,
+                    data={CONF_ADDRESS: self._address, CONF_KEY: user_input[CONF_KEY].strip().lower()},
+                )
+            errors["base"] = error
 
         return self.async_show_form(
             step_id="key",
             data_schema=vol.Schema({vol.Required(CONF_KEY): str}),
-            description_placeholders={"address": self._discovered_address},
+            errors=errors,
+            description_placeholders={"name": self._name or self._address},
         )
+
+    async def _validate_key(self, key_hex: str) -> str | None:
+        """Return an error slug if the key is malformed or fails to authenticate."""
+        try:
+            key = bytes.fromhex(key_hex.strip())
+        except ValueError:
+            return "invalid_key_format"
+        if len(key) != 32:
+            return "invalid_key_format"
+
+        address = self._address
+        hass = self.hass
+
+        def factory(_address: str, *, timeout: float, **_kwargs: object) -> BleakClient:
+            device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
+            if device is None:
+                raise BleakError(f"{address} is not currently reachable over BLE")
+            return BleakClient(device, timeout=timeout)
+
+        client = TiltShadeClient(address, key, client_factory=factory)
+        try:
+            await client.read_status()
+        except AuthenticationError:
+            return "invalid_key"
+        except (BleakError, TiltProtocolError, TimeoutError):
+            return "cannot_connect"
+        return None

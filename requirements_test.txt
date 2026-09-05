@@ -1,0 +1,21 @@
+# Test harness for the SmartBlinds BLE integration.
+pytest-homeassistant-custom-component
+ruff
+
+# Home Assistant's `bluetooth` dependency and its stack (not auto-installed by the
+# test harness). Approximates what HA pulls in for the bluetooth integration.
+aiousbwatcher
+habluetooth
+bleak-retry-connector
+bluetooth-adapters
+bluetooth-auto-recovery
+bluetooth-data-tools
+dbus-fast
+usb-devices
+pyserial
+
+# Library under test. Not yet on PyPI, so CI installs it from git main.
+# NOTE: the Tilt subpackage must be committed/pushed to main for this to resolve.
+# For a release, publish smartblinds-ble to PyPI and this line becomes the pinned
+# version in the manifest.
+smartblinds-ble @ git+https://github.com/benbalter/smartblinds-ble@main

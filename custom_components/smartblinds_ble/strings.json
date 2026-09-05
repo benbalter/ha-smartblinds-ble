@@ -3,23 +3,28 @@
     "flow_title": "{name}",
     "step": {
       "user": {
-        "title": "Add a shade motor",
-        "description": "Enter the BLE MAC address of the shade motor.",
+        "title": "Add a Tilt roller shade",
+        "description": "Enter the shade's Bluetooth MAC address.",
         "data": {
           "address": "Bluetooth address"
         }
       },
       "key": {
-        "title": "Motor key",
-        "description": "Enter the BLE key for {address}. Find it with `smartblinds-find-key` or by sniffing the app once.",
+        "title": "Pairing key",
+        "description": "Enter the 64-character hex pairing key for {name}. Rescue it from the Tilt cloud store (see the smartblinds-ble docs). The key is validated against the shade before saving.",
         "data": {
-          "key": "Key (hex, e.g. 2a)"
+          "key": "Pairing key (64 hex characters)"
         }
       }
     },
+    "error": {
+      "invalid_key_format": "The pairing key must be exactly 64 hexadecimal characters.",
+      "invalid_key": "That key did not authenticate this shade.",
+      "cannot_connect": "Could not reach the shade over Bluetooth. Make sure a proxy is in range and no phone or the Tilt app is holding the connection."
+    },
     "abort": {
       "already_configured": "This shade is already configured.",
-      "no_devices_found": "No shade motors found."
+      "no_devices_found": "No Tilt roller shades found."
     }
   }
 }

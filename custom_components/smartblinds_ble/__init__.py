@@ -1,37 +1,35 @@
 """The SmartBlinds BLE integration.
 
-Local, hub-free control of MySmartBlinds/Tilt shade motors over BLE. Works through
-Home Assistant's Bluetooth stack, including ESPHome Bluetooth Proxies.
-
-⚠️  STUB / pre-alpha. The underlying protocol is unverified on current firmware —
-    see the smartblinds-ble library's docs/ROADMAP.md (Milestone 0).
+Local, hub-free control of Tilt / SmarterHome roller shades over BLE, through
+Home Assistant's Bluetooth stack (including ESPHome Bluetooth Proxies). Uses the
+vendored encrypted Tilt protocol in the ``smartblinds-ble`` library.
 """
 
 from __future__ import annotations
 
-import logging
-
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import CONF_ADDRESS, CONF_KEY
+from .coordinator import SmartBlindsConfigEntry, SmartBlindsCoordinator
 
-_LOGGER = logging.getLogger(__name__)
-
-PLATFORMS: list[Platform] = [Platform.COVER]
+PLATFORMS: list[Platform] = [Platform.COVER, Platform.SENSOR]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up SmartBlinds BLE from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
+async def async_setup_entry(hass: HomeAssistant, entry: SmartBlindsConfigEntry) -> bool:
+    """Set up a Tilt shade from a config entry."""
+    coordinator = SmartBlindsCoordinator(
+        hass,
+        address=entry.data[CONF_ADDRESS],
+        name=entry.title,
+        pairing_key=bytes.fromhex(entry.data[CONF_KEY]),
+    )
+    await coordinator.async_config_entry_first_refresh()
+    entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: SmartBlindsConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
