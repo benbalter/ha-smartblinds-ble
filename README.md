@@ -5,12 +5,10 @@ roller shades** over Bluetooth LE. Works through HA's Bluetooth stack, including
 cheap **ESP32 ESPHome Bluetooth Proxies** — so you can retire the discontinued
 Tilt cloud bridge.
 
-> **Status: alpha.** The encrypted Tilt protocol is implemented and validated
-> against real shades (authenticated handshake + live position/battery reads) via
-> the [`smartblinds-ble`](https://github.com/benbalter/smartblinds-ble) library.
-> The HA layer here (config flow, coordinator, entities) is unit-tested but not yet
-> field-tested through a proxy. See "Requirements" below — the library must be
-> installable for the integration to load.
+> **Status: working.** Verified end-to-end on 2026-09-11 against four Tilt roller
+> shades, routed through an ESP32 ESPHome Bluetooth Proxy: all four paired, report
+> live position and battery, and physically move on a `cover.set_position` from
+> Home Assistant. No cloud, no hub, no phone app in the path.
 >
 > Not affiliated with, authorized by, or endorsed by MySmartBlinds, Tilt, or
 > SmarterHome.
@@ -26,6 +24,11 @@ Tilt cloud bridge.
   (authenticated read) before saving, so a wrong or stale key is rejected up front.
 - Opens **brief, on-demand BLE sessions** and polls sparingly, to spare the solar
   battery and avoid locking the shade away from the Tilt app.
+- Handles the fact that **a shade keeps moving after the command returns**: the
+  write finishes as soon as the motor accepts it, tens of seconds before it
+  arrives, so the integration schedules a single re-read to converge rather than
+  re-sending the command. A shade that never moves at all fails the action with a
+  message naming it.
 
 ## How it works
 
@@ -37,9 +40,14 @@ range; the integration drives the vendored, MIT-licensed Tilt codec in
 ## Getting the pairing key
 
 Each shade has a 32-byte (64-hex) pairing key. Rescue it from the Tilt cloud store
-while the cloud is still up — see the
-[`smartblinds-ble` docs](https://github.com/benbalter/smartblinds-ble). Confirm the
-keys authenticate in range first with that repo's `contrib/gate_auth_mac.py`.
+**while the cloud is still up** — see the
+[`smartblinds-ble` docs](https://github.com/benbalter/smartblinds-ble/blob/main/docs/PROTOCOL.md).
+Confirm the keys authenticate in range first with that repo's
+`contrib/gate_auth_mac.py`.
+
+These keys cannot be brute-forced (32 bytes) or recovered from packet captures,
+and the vendor cloud is winding down, so **an exported key is irreplaceable** —
+back it up outside Home Assistant.
 
 ## Install (HACS custom repository)
 
@@ -50,15 +58,23 @@ keys authenticate in range first with that repo's `contrib/gate_auth_mac.py`.
    Settings → Devices → Add Integration → SmartBlinds BLE.
 4. Enter the shade's 64-hex **pairing key** when prompted.
 
+> Every shade advertises the same local name (`RollerSh`), and the config flow does
+> not yet show the MAC, so discovery cards are indistinguishable. Trial and error
+> is safe: the key is validated against the live shade and nothing is saved unless
+> it authenticates. *"That key did not authenticate this shade"* means right shade,
+> wrong key — try the next one. *"Could not reach the shade"* means range, or a
+> phone holding the connection.
+
 ## Requirements
 
 - Home Assistant 2024.8+.
 - A Bluetooth adapter **or** an ESPHome Bluetooth Proxy in range of each shade.
-- The [`smartblinds-ble`](https://github.com/benbalter/smartblinds-ble) library.
-  **It is not yet on PyPI**, so until it is published the `manifest.json`
-  `requirements` pin (`smartblinds-ble==0.0.1`) will not resolve automatically —
-  install the library into your HA environment manually (matching version `0.0.1`),
-  or wait for the PyPI release. CI installs it from git `main`.
+  One proxy per room beats one central proxy: authentication held up at −85 dBm in
+  testing, but that is not a level to depend on for regular polling.
+- The [`smartblinds-ble`](https://pypi.org/project/smartblinds-ble/) library,
+  pulled automatically from PyPI by `manifest.json`
+  (`smartblinds-ble==0.1.1`) — no manual install. If setup fails, check the HA log
+  for a pip error from `homeassistant.util.package`.
 
 ## Development
 
