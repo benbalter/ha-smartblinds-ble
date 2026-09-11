@@ -18,3 +18,9 @@ MODEL = "Tilt Roller Shade"
 
 # Solar/battery motors that accept a single central: poll sparingly, connect on demand.
 DEFAULT_POLL_INTERVAL = timedelta(minutes=30)
+
+# How long a shade needs to finish travelling. A position write returns as soon
+# as the motor acknowledges and starts moving (tens of seconds before it
+# arrives), so one delayed re-read converges the UI instead of showing a stale
+# mid-travel position until the next 30-minute poll.
+POSITION_TRAVEL_TIME = timedelta(seconds=30)

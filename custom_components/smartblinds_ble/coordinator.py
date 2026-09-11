@@ -16,13 +16,26 @@ from bleak import BleakClient
 from bleak.exc import BleakError
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from smartblinds_ble.tilt import ShadeStatus, TiltProtocolError, TiltShadeClient
+from smartblinds_ble.tilt import (
+    PositionVerificationPending,
+    ShadeStatus,
+    TiltProtocolError,
+    TiltShadeClient,
+)
 
-from .const import DEFAULT_POLL_INTERVAL, DOMAIN, MANUFACTURER, MODEL
+from .const import (
+    DEFAULT_POLL_INTERVAL,
+    DOMAIN,
+    MANUFACTURER,
+    MODEL,
+    POSITION_TRAVEL_TIME,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +57,7 @@ class SmartBlindsCoordinator(DataUpdateCoordinator[ShadeStatus]):
         self.address = address
         self.device_name = name
         self._pairing_key = pairing_key
+        self._arrival_unsub: CALLBACK_TYPE | None = None
         # Single shared device identity so cover + sensor name the device consistently
         # regardless of which platform registers it first.
         self.device_info = DeviceInfo(
@@ -80,8 +94,48 @@ class SmartBlindsCoordinator(DataUpdateCoordinator[ShadeStatus]):
             raise UpdateFailed(f"Could not read shade {self.address}: {err}") from err
 
     async def async_set_position(self, position_percent: int) -> None:
-        """Move the shade to a target percent and refresh state from the read-back."""
-        status, _moved = await self._make_client(
-            allow_position_writes=True
-        ).set_position_and_read_status(position_percent)
+        """Move the shade to a target percent and converge state on the read-back."""
+        try:
+            status, _moved = await self._make_client(
+                allow_position_writes=True
+            ).set_position_and_read_status(position_percent)
+        except PositionVerificationPending as err:
+            # The shade answered but never moved toward the target: a stuck
+            # motor, an obstruction, or a rejected command. Keep the position it
+            # reported and fail the action with a readable message rather than
+            # letting the exception surface as a traceback in an automation.
+            self.async_set_updated_data(err.status)
+            raise HomeAssistantError(
+                f"{self.device_name} did not move toward {position_percent}%"
+                f" (still reporting {err.status.position_percent}%)"
+            ) from err
+        except (BleakError, TiltProtocolError, TimeoutError) as err:
+            raise HomeAssistantError(f"Could not move {self.device_name}: {err}") from err
+
         self.async_set_updated_data(status)
+        if status.position_percent != position_percent:
+            # Accepted and still travelling — the write returns long before the
+            # motor arrives, so re-read once it should have finished.
+            self._schedule_arrival_refresh()
+
+    def _schedule_arrival_refresh(self) -> None:
+        """Re-read the shade once, after it has had time to finish travelling."""
+        self._cancel_arrival_refresh()
+
+        @callback
+        def _refresh(_now) -> None:
+            self._arrival_unsub = None
+            self.hass.async_create_task(self.async_request_refresh())
+
+        self._arrival_unsub = async_call_later(self.hass, POSITION_TRAVEL_TIME, _refresh)
+
+    @callback
+    def _cancel_arrival_refresh(self) -> None:
+        if self._arrival_unsub is not None:
+            self._arrival_unsub()
+            self._arrival_unsub = None
+
+    async def async_shutdown(self) -> None:
+        """Drop any pending arrival re-read when the entry unloads."""
+        self._cancel_arrival_refresh()
+        await super().async_shutdown()
