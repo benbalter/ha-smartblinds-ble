@@ -48,9 +48,9 @@ async def test_factory_raises_when_the_shade_is_out_of_range(hass: HomeAssistant
     with (
         patch(f"{MODULE}.bluetooth.async_ble_device_from_address", return_value=None),
         patch(f"{MODULE}.establish_connection", AsyncMock()) as establish,
+        pytest.raises(BleakError, match="not currently reachable"),
     ):
-        with pytest.raises(BleakError, match="not currently reachable"):
-            await client._client_factory(ADDRESS, timeout=10.0, pair=False)
+        await client._client_factory(ADDRESS, timeout=10.0, pair=False)
 
     # No connection attempt at all when HA has no BLEDevice for it.
     assert establish.await_count == 0
