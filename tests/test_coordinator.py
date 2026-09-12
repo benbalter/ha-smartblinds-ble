@@ -14,7 +14,13 @@ import pytest
 from bleak.exc import BleakError
 from homeassistant.core import HomeAssistant
 
+from custom_components.smartblinds_ble.const import (
+    IDLE_POLL_INTERVALS,
+    IDLE_POLLS_BEFORE_BACKOFF,
+)
 from custom_components.smartblinds_ble.coordinator import SmartBlindsCoordinator
+
+from .doubles import FakeTiltClient
 
 MODULE = "custom_components.smartblinds_ble.coordinator"
 ADDRESS = "AA:BB:CC:DD:EE:01"
@@ -54,3 +60,44 @@ async def test_factory_raises_when_the_shade_is_out_of_range(hass: HomeAssistant
 
     # No connection attempt at all when HA has no BLEDevice for it.
     assert establish.await_count == 0
+
+
+async def test_polling_backs_off_while_nothing_changes(hass: HomeAssistant) -> None:
+    """Idle shades should stop costing a BLE session every 30 minutes.
+
+    These are solar-charged motors; 48 polls a day per shade, nearly all returning
+    the identical status, is radio time spent to learn nothing.
+    """
+    coordinator = _coordinator(hass)
+    fake = FakeTiltClient(position=30, battery=66)
+
+    with patch(f"{MODULE}.TiltShadeClient", return_value=fake):
+        await coordinator.async_refresh()
+        assert coordinator.update_interval == IDLE_POLL_INTERVALS[0]
+
+        for _ in range(IDLE_POLLS_BEFORE_BACKOFF):
+            await coordinator.async_refresh()
+        assert coordinator.update_interval == IDLE_POLL_INTERVALS[1]
+
+        for _ in range(IDLE_POLLS_BEFORE_BACKOFF):
+            await coordinator.async_refresh()
+        assert coordinator.update_interval == IDLE_POLL_INTERVALS[2]
+
+        # The ladder is clamped; it does not run off the end.
+        for _ in range(IDLE_POLLS_BEFORE_BACKOFF * 3):
+            await coordinator.async_refresh()
+        assert coordinator.update_interval == IDLE_POLL_INTERVALS[-1]
+
+
+async def test_a_change_returns_to_full_rate(hass: HomeAssistant) -> None:
+    coordinator = _coordinator(hass)
+    fake = FakeTiltClient(position=30, battery=66)
+
+    with patch(f"{MODULE}.TiltShadeClient", return_value=fake):
+        for _ in range(IDLE_POLLS_BEFORE_BACKOFF * 2):
+            await coordinator.async_refresh()
+        assert coordinator.update_interval != IDLE_POLL_INTERVALS[0]
+
+        fake._position = 80  # the shade moved: news, so poll attentively again
+        await coordinator.async_refresh()
+        assert coordinator.update_interval == IDLE_POLL_INTERVALS[0]

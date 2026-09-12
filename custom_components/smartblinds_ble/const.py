@@ -19,6 +19,19 @@ MODEL = "Tilt Roller Shade"
 # Solar/battery motors that accept a single central: poll sparingly, connect on demand.
 DEFAULT_POLL_INTERVAL = timedelta(minutes=30)
 
+# Idle backoff. A shade that nobody touches reports the same status every poll, and
+# each poll is a BLE session on a solar-charged motor — 48 a day per shade, almost
+# all of them learning nothing. After IDLE_POLLS_BEFORE_BACKOFF identical reads the
+# interval steps down this ladder; any change, command, or failure resets it to the
+# head. Battery reporting stays hourly at worst, which is ample for a number that
+# moves by single digits per week.
+IDLE_POLL_INTERVALS = (
+    timedelta(minutes=30),
+    timedelta(hours=1),
+    timedelta(hours=2),
+)
+IDLE_POLLS_BEFORE_BACKOFF = 3
+
 # How long a shade needs to finish travelling. A position write returns as soon
 # as the motor acknowledges and starts moving (tens of seconds before it
 # arrives), so one delayed re-read converges the UI instead of showing a stale

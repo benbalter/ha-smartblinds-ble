@@ -32,6 +32,8 @@ from smartblinds_ble.tilt import (
 
 from .const import (
     DEFAULT_POLL_INTERVAL,
+    IDLE_POLL_INTERVALS,
+    IDLE_POLLS_BEFORE_BACKOFF,
     DOMAIN,
     MANUFACTURER,
     MODEL,
@@ -59,6 +61,7 @@ class SmartBlindsCoordinator(DataUpdateCoordinator[ShadeStatus]):
         self.device_name = name
         self._pairing_key = pairing_key
         self._arrival_unsub: CALLBACK_TYPE | None = None
+        self._identical_reads = 0
         # Single shared device identity so cover + sensor name the device consistently
         # regardless of which platform registers it first.
         self.device_info = DeviceInfo(
@@ -96,9 +99,30 @@ class SmartBlindsCoordinator(DataUpdateCoordinator[ShadeStatus]):
 
     async def _async_update_data(self) -> ShadeStatus:
         try:
-            return await self._make_client(allow_position_writes=False).read_status()
+            status = await self._make_client(allow_position_writes=False).read_status()
         except (BleakError, TiltProtocolError, TimeoutError) as err:
+            # A failure is news: poll at full rate until the shade is answering again.
+            self._set_poll_interval(0)
             raise UpdateFailed(f"Could not read shade {self.address}: {err}") from err
+
+        if status == self.data:
+            self._identical_reads += 1
+        else:
+            self._identical_reads = 0
+        self._set_poll_interval(self._identical_reads // IDLE_POLLS_BEFORE_BACKOFF)
+        return status
+
+    def _set_poll_interval(self, step: int) -> None:
+        """Move to a rung of the idle-backoff ladder, clamped to its ends."""
+        interval = IDLE_POLL_INTERVALS[min(max(step, 0), len(IDLE_POLL_INTERVALS) - 1)]
+        if interval != self.update_interval:
+            _LOGGER.debug(
+                "%s: polling every %s after %d identical reads",
+                self.device_name,
+                interval,
+                self._identical_reads,
+            )
+            self.update_interval = interval
 
     async def async_set_position(self, position_percent: int) -> None:
         """Move the shade to a target percent and converge state on the read-back."""
@@ -119,6 +143,9 @@ class SmartBlindsCoordinator(DataUpdateCoordinator[ShadeStatus]):
         except (BleakError, TiltProtocolError, TimeoutError) as err:
             raise HomeAssistantError(f"Could not move {self.device_name}: {err}") from err
 
+        # Somebody is using this shade, so stop coasting on the idle ladder.
+        self._identical_reads = 0
+        self._set_poll_interval(0)
         self.async_set_updated_data(status)
         if status.position_percent != position_percent:
             # Accepted and still travelling — the write returns long before the
