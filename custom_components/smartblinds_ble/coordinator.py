@@ -32,9 +32,9 @@ from smartblinds_ble.tilt import (
 
 from .const import (
     DEFAULT_POLL_INTERVAL,
+    DOMAIN,
     IDLE_POLL_INTERVALS,
     IDLE_POLLS_BEFORE_BACKOFF,
-    DOMAIN,
     MANUFACTURER,
     MODEL,
     POSITION_TRAVEL_TIME,
