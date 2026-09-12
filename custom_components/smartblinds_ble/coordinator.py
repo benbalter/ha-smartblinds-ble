@@ -14,6 +14,7 @@ import logging
 
 from bleak import BleakClient
 from bleak.exc import BleakError
+from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -72,12 +73,18 @@ class SmartBlindsCoordinator(DataUpdateCoordinator[ShadeStatus]):
         """Build a client that resolves a fresh proxy-routed BLEDevice per session."""
         address = self.address
         hass = self.hass
+        name = self.device_name
 
-        def factory(_address: str, *, timeout: float, **_kwargs: object) -> BleakClient:
+        async def factory(_address: str, *, timeout: float, **_kwargs: object) -> BleakClient:
             device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
             if device is None:
                 raise BleakError(f"{address} is not currently reachable over BLE")
-            return BleakClient(device, timeout=timeout)
+            # establish_connection() rather than BleakClient.connect(): it retries
+            # through whichever ESPHome proxy is in range and, crucially, releases
+            # the proxy's connection slot when an attempt fails. A raw connect()
+            # leaks slots on failure, which is how a marginal-RSSI shade can wedge a
+            # proxy and take every shade behind it offline.
+            return await establish_connection(BleakClient, device, name, timeout=timeout)
 
         return TiltShadeClient(
             address,

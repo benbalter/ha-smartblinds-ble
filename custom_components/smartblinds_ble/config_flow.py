@@ -14,6 +14,7 @@ from typing import Any
 import voluptuous as vol
 from bleak import BleakClient
 from bleak.exc import BleakError
+from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
@@ -96,11 +97,14 @@ class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
         address = self._address
         hass = self.hass
 
-        def factory(_address: str, *, timeout: float, **_kwargs: object) -> BleakClient:
+        async def factory(_address: str, *, timeout: float, **_kwargs: object) -> BleakClient:
             device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
             if device is None:
                 raise BleakError(f"{address} is not currently reachable over BLE")
-            return BleakClient(device, timeout=timeout)
+            # Same reasoning as the coordinator: let bleak-retry-connector own
+            # connection establishment so a failed validation attempt cannot strand
+            # a proxy connection slot.
+            return await establish_connection(BleakClient, device, self._name or address, timeout=timeout)
 
         client = TiltShadeClient(address, key, client_factory=factory)
         try:
