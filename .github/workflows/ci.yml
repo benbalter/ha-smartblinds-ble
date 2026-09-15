@@ -21,6 +21,9 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # Brands live in home-assistant/brands (a separate submission); skip that
+          # check until the domain's icons are merged there.
+          ignore: brands
 
   test:
     name: lint + tests
