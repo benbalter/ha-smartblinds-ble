@@ -11,7 +11,7 @@
       },
       "key": {
         "title": "Pairing key",
-        "description": "Enter the 64-character hex pairing key for {name}. Rescue it from the Tilt cloud store (see the smartblinds-ble docs). The key is validated against the shade before saving.",
+        "description": "Enter the 64-character hex pairing key for {name} at {address}. Every shade advertises the same name, so check the address to be sure which one this is. Rescue the key from the Tilt cloud store (see the smartblinds-ble docs). The key is validated against the shade before saving, and nothing is written if it does not authenticate.",
         "data": {
           "key": "Pairing key (64 hex characters)"
         }

@@ -35,6 +35,18 @@ class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
         self._address: str | None = None
         self._name: str | None = None
 
+    @property
+    def _label(self) -> str:
+        """Name plus address.
+
+        Every shade advertises the same truncated local name ("RollerSh"), so a
+        bare name makes discovery cards — and, later, devices — impossible to
+        tell apart. The address is the only thing that distinguishes them.
+        """
+        if self._name and self._name != self._address:
+            return f"{self._name} ({self._address})"
+        return self._address or ""
+
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
@@ -43,7 +55,7 @@ class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
         self._address = discovery_info.address
         self._name = discovery_info.name or discovery_info.address
-        self.context["title_placeholders"] = {"name": self._name}
+        self.context["title_placeholders"] = {"name": self._label}
         return await self.async_step_key()
 
     async def async_step_user(
@@ -56,6 +68,7 @@ class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             self._address = address
             self._name = address
+            self.context["title_placeholders"] = {"name": self._label}
             return await self.async_step_key()
 
         return self.async_show_form(
@@ -73,7 +86,7 @@ class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
             error = await self._validate_key(user_input[CONF_KEY])
             if error is None:
                 return self.async_create_entry(
-                    title=self._name or self._address,
+                    title=self._label,
                     data={CONF_ADDRESS: self._address, CONF_KEY: user_input[CONF_KEY].strip().lower()},
                 )
             errors["base"] = error
@@ -82,7 +95,10 @@ class SmartBlindsConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="key",
             data_schema=vol.Schema({vol.Required(CONF_KEY): str}),
             errors=errors,
-            description_placeholders={"name": self._name or self._address},
+            description_placeholders={
+                "name": self._name or self._address,
+                "address": self._address,
+            },
         )
 
     async def _validate_key(self, key_hex: str) -> str | None:
