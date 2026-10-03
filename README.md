@@ -1,9 +1,6 @@
 # SmartBlinds BLE — Home Assistant integration
 
-Local, **hub-free and cloud-free** Home Assistant control of **Tilt / SmarterHome
-roller shades** over Bluetooth LE. Works through HA's Bluetooth stack, including
-cheap **ESP32 ESPHome Bluetooth Proxies** — so you can retire the discontinued
-Tilt cloud bridge.
+Local, **hub-free and cloud-free** Home Assistant control of **Tilt / SmarterHome roller shades** over Bluetooth LE. Works through HA's Bluetooth stack, including cheap **ESP32 ESPHome Bluetooth Proxies** — so you can retire the discontinued Tilt cloud bridge.
 
 > **Status: working.** Verified end-to-end on 2026-09-11 against four Tilt roller
 > shades, routed through an ESP32 ESPHome Bluetooth Proxy: all four paired, report
@@ -15,8 +12,7 @@ Tilt cloud bridge.
 
 ## What it does
 
-- Exposes each shade as a **position `cover`** with real state read back from the
-  shade (0% = closed, 100% = open) — not optimistic/assumed-state.
+- Exposes each shade as a **position `cover`** with real state read back from the shade (0% = closed, 100% = open) — not optimistic/assumed-state.
 - Exposes a **battery** sensor per shade.
 - **Bluetooth auto-discovery** of `RollerSh…` shades (via a local adapter or an
   ESPHome proxy in range).
@@ -32,30 +28,19 @@ Tilt cloud bridge.
 
 ## How it works
 
-The FireBeetle/ESP32 runs *stock* ESPHome Bluetooth-Proxy firmware. HA's
-`habluetooth` transparently routes the BLE connection through whichever proxy is in
-range; the integration drives the vendored, MIT-licensed Tilt codec in
-`smartblinds-ble` (AES-128-CTR session, `HMAC-SHA256` pairing-key auth).
+The FireBeetle/ESP32 runs *stock* ESPHome Bluetooth-Proxy firmware. HA's `habluetooth` transparently routes the BLE connection through whichever proxy is in range; the integration drives the vendored, MIT-licensed Tilt codec in `smartblinds-ble` (AES-128-CTR session, `HMAC-SHA256` pairing-key auth).
 
 ## Getting the pairing key
 
-Each shade has a 32-byte (64-hex) pairing key. Rescue it from the Tilt cloud store
-**while the cloud is still up** — see the
-[`smartblinds-ble` docs](https://github.com/benbalter/smartblinds-ble/blob/main/docs/PROTOCOL.md).
-Confirm the keys authenticate in range first with that repo's
-`contrib/gate_auth_mac.py`.
+Each shade has a 32-byte (64-hex) pairing key. Rescue it from the Tilt cloud store **while the cloud is still up** — see the [`smartblinds-ble` docs](https://github.com/benbalter/smartblinds-ble/blob/main/docs/PROTOCOL.md). Confirm the keys authenticate in range first with that repo's `contrib/gate_auth_mac.py`.
 
-These keys cannot be brute-forced (32 bytes) or recovered from packet captures,
-and the vendor cloud is winding down, so **an exported key is irreplaceable** —
-back it up outside Home Assistant.
+These keys cannot be brute-forced (32 bytes) or recovered from packet captures, and the vendor cloud is winding down, so **an exported key is irreplaceable** — back it up outside Home Assistant.
 
 ## Install (HACS custom repository)
 
-1. HACS → Integrations → ⋮ → Custom repositories → add
-   `https://github.com/benbalter/ha-smartblinds-ble` (type: Integration).
+1. HACS → Integrations → ⋮ → Custom repositories → add `https://github.com/benbalter/ha-smartblinds-ble` (type: Integration).
 2. Install "SmartBlinds BLE", restart HA.
-3. It auto-discovers nearby shades, or add one via
-   Settings → Devices → Add Integration → SmartBlinds BLE.
+3. It auto-discovers nearby shades, or add one via Settings → Devices → Add Integration → SmartBlinds BLE.
 4. Enter the shade's 64-hex **pairing key** when prompted.
 
 > Every shade advertises the same local name (`RollerSh`), and the config flow does
@@ -68,13 +53,8 @@ back it up outside Home Assistant.
 ## Requirements
 
 - Home Assistant 2024.8+.
-- A Bluetooth adapter **or** an ESPHome Bluetooth Proxy in range of each shade.
-  One proxy per room beats one central proxy: authentication held up at −85 dBm in
-  testing, but that is not a level to depend on for regular polling.
-- The [`smartblinds-ble`](https://pypi.org/project/smartblinds-ble/) library,
-  pulled automatically from PyPI by `manifest.json`
-  (`smartblinds-ble==0.1.1`) — no manual install. If setup fails, check the HA log
-  for a pip error from `homeassistant.util.package`.
+- A Bluetooth adapter **or** an ESPHome Bluetooth Proxy in range of each shade. One proxy per room beats one central proxy: authentication held up at −85 dBm in testing, but that is not a level to depend on for regular polling.
+- The [`smartblinds-ble`](https://pypi.org/project/smartblinds-ble/) library, pulled automatically from PyPI by `manifest.json` (`smartblinds-ble==0.1.1`) — no manual install. If setup fails, check the HA log for a pip error from `homeassistant.util.package`.
 
 ## Development
 
@@ -85,9 +65,7 @@ ruff check custom_components tests
 pytest -q
 ```
 
-The BLE protocol itself is exhaustively tested in the `smartblinds-ble` library
-(against a fake shade peripheral); the tests here cover HA wiring — config flow,
-coordinator, and entities — with a deterministic client double.
+The BLE protocol itself is exhaustively tested in the `smartblinds-ble` library (against a fake shade peripheral); the tests here cover HA wiring — config flow, coordinator, and entities — with a deterministic client double.
 
 ## Layout
 
